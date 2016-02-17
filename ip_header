@@ -1,0 +1,8 @@
+id, 4
+frag, 0
+ttl, 110
+saddr, 192.168.0.99
+daddr, 192.168.0.161
+proto, tcp
+interval, -1 
+tos,!

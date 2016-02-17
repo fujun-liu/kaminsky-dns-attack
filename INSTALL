@@ -1,0 +1,24 @@
+		    GNU GENERAL PUBLIC LICENSE
+		       Version 2, June 1991
+
+ Copyright (C) 1989, 1991 Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+pacgen v1.10 install file
+Bo Cato (pacgen.sourceforge.net)
+
+    1. Make sure you have Libnet installed, pacgen was written with 1.1.2.1
+       installed. Goto www.packetfactory.net or somewhere else and get it.
+
+    2. Read the README file
+
+    3. Compile via the libnet-config script (at least this is how I did it):
+ 
+        gcc `libnet-config --cflags --defines` pacgen.c -o pacgen \
+        `libnet-config --libs`
+
+    4. Or for the lazy run the install.sh script
+
+eof

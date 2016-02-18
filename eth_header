@@ -1,4 +1,0 @@
-saddr, 00, 11, 22, 33, 44, 55 
-daddr, 00, 00, 00, 00, 00, 00
-proto, ip 
-pktcount, 1 
